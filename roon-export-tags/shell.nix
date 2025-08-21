@@ -2,16 +2,13 @@
 
 pkgs.mkShell {
   buildInputs = with pkgs; [
-    nodejs_20
+    python3
+    python3Packages.pandas
+    python3Packages.openpyxl
+    python3Packages.pyyaml
   ];
 
   shellHook = ''
-    echo "Roon Export Tags Development Environment"
-    echo "Node.js version: $(node --version)"
-    echo "NPM version: $(npm --version)"
-    echo ""
-    echo "To get started:"
-    echo "  npm install"
-    echo "  npm start [output-file.yaml]"
+    echo "Python environment with pandas, openpyxl, and pyyaml ready"
   '';
 }
