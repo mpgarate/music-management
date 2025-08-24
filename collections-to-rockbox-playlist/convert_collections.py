@@ -53,11 +53,10 @@ def sanitize_filename(filename):
         filename = filename.replace(char, '_')
     return filename
 
-def create_playlist_name(collection_name, album_path):
-    """Create playlist name following the format: collection - album_folder"""
+def create_playlist_name(album_path):
+    """Create playlist name from album folder name only"""
     album_folder = os.path.basename(album_path)
-    playlist_name = f"{collection_name} - {album_folder}"
-    return sanitize_filename(playlist_name)
+    return sanitize_filename(album_folder)
 
 def main():
     # Load the YAML file
@@ -70,6 +69,11 @@ def main():
     # Process each collection
     for collection_key, collection_data in data['collections'].items():
         collection_name = collection_data['name']
+        sanitized_collection_name = sanitize_filename(collection_name)
+        
+        # Create collection directory
+        collection_dir = os.path.join('Playlists', sanitized_collection_name)
+        os.makedirs(collection_dir, exist_ok=True)
         
         for album_rel_path in collection_data['albums']:
             # Convert to full path from Music directory
@@ -88,9 +92,9 @@ def main():
                 continue
             
             # Create playlist name and file
-            playlist_name = create_playlist_name(collection_name, album_rel_path)
+            playlist_name = create_playlist_name(album_rel_path)
             playlist_filename = f"{playlist_name}.m3u8"
-            playlist_path = os.path.join('Playlists', playlist_filename)
+            playlist_path = os.path.join(collection_dir, playlist_filename)
             
             # Write playlist file
             with open(playlist_path, 'w', encoding='utf-8') as playlist_file:
@@ -101,7 +105,7 @@ def main():
                     # Make path relative to rockbox root for the playlist
                     playlist_file.write(f"{audio_file}\n")
             
-            print(f"Created playlist: {playlist_filename} ({len(audio_files)} tracks)")
+            print(f"Created playlist: {sanitized_collection_name}/{playlist_filename} ({len(audio_files)} tracks)")
 
 if __name__ == "__main__":
     main()
