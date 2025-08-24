@@ -48,32 +48,38 @@ end
 function parse_yaml(content)
     local result = {}
     local current_collection = nil
+    local in_albums_section = false
     
     for line in content:gmatch("[^\r\n]+") do
-        line = line:gsub("^%s*", ""):gsub("%s*$", "")  -- trim whitespace
+        -- Count leading spaces to determine indentation level
+        local indent = line:match("^(%s*)") or ""
+        local indent_level = #indent
+        local trimmed = line:gsub("^%s*", ""):gsub("%s*$", "")
         
-        if line:match("^collections:") then
+        if trimmed:match("^collections:") then
             -- Start of collections section
-        elseif line:match("^'?([^':%s]+)'?:$") or line:match("^\"?([^\":%s]+)\"?:$") then
-            -- Collection name (with or without quotes)
-            current_collection = line:match("^'?([^':%s]+)'?:") or line:match("^\"?([^\":%s]+)\"?:")
+        elseif indent_level == 2 and (trimmed:match("^'([^']+)':") or trimmed:match("^\"([^\"]+)\":") or trimmed:match("^([^'\":%s]+):")) then
+            -- Collection name at indent level 2
+            current_collection = trimmed:match("^'([^']+)':") or trimmed:match("^\"([^\"]+)\":") or trimmed:match("^([^'\":%s]+):")
             if current_collection then
                 result[current_collection] = {albums = {}, name = current_collection}
+                in_albums_section = false
             end
-        elseif line:match("^albums:") then
-            -- Albums section marker
-        elseif line:match("^name: (.+)") then
-            -- Display name for collection
+        elseif indent_level == 4 and trimmed:match("^albums:") then
+            -- Albums section marker at indent level 4
+            in_albums_section = true
+        elseif indent_level == 4 and trimmed:match("^name: (.+)") then
+            -- Display name for collection at indent level 4
             if current_collection then
-                local name = line:match("^name: (.+)")
+                local name = trimmed:match("^name: (.+)")
                 -- Remove quotes if present
                 name = name:gsub("^['\"]", ""):gsub("['\"]$", "")
                 result[current_collection].name = name
             end
-        elseif line:match("^%- (.+)") then
-            -- Album path
+        elseif indent_level == 4 and trimmed:match("^%- (.+)") and in_albums_section then
+            -- Album path at indent level 4, only if we're in albums section
             if current_collection then
-                local album = line:match("^%- (.+)")
+                local album = trimmed:match("^%- (.+)")
                 table.insert(result[current_collection].albums, album)
             end
         end
@@ -93,13 +99,21 @@ function load_collections()
     end
     
     collections = parse_yaml(content)
+    
+    -- Debug: show number of collections loaded
+    local count = 0
+    for _ in pairs(collections) do
+        count = count + 1
+    end
+    rb.splash(2 * rb.HZ, "Loaded " .. count .. " collections")
+    
     return true
 end
 
 -- Get list of audio files in directory
 function get_audio_files(dir_path)
     local files = {}
-    local full_path = "/" .. dir_path
+    local full_path = "/Music/" .. dir_path
     
     -- Try to open directory
     local dir = rb.opendir(full_path)
@@ -180,11 +194,17 @@ function draw_menu()
         
     elseif current_menu == "albums" and selected_collection then
         title = collections[selected_collection].name
-        for _, album in ipairs(collections[selected_collection].albums) do
-            -- Extract album name from path (last part after /)
-            local album_name = album:match("([^/]+)$") or album
-            table.insert(items, {id = album, name = album_name})
+        local album_count = 0
+        if collections[selected_collection] and collections[selected_collection].albums then
+            for _, album in ipairs(collections[selected_collection].albums) do
+                -- Extract album name from path (last part after /)
+                local album_name = album:match("([^/]+)$") or album
+                table.insert(items, {id = album, name = album_name})
+                album_count = album_count + 1
+            end
         end
+        -- Debug: show album count in title
+        title = title .. " (" .. album_count .. " albums)"
     end
     
     -- Draw title
@@ -203,16 +223,26 @@ function draw_menu()
         if item_index <= #items then
             local item = items[item_index]
             local line = i
+            local char_height = rb.font_getstringsize("A", rb.FONT_UI)
             
             -- Highlight selected item
             if item_index == current_selection then
-                -- Use inverse display for selected item
-                local text_width = rb.font_getstringsize(item.name, rb.FONT_UI)
-                rb.lcd_fillrect(0, line * rb.font_getstringsize("A", rb.FONT_UI), 
-                               math.min(text_width, rb.LCD_WIDTH), rb.font_getstringsize("A", rb.FONT_UI))
-                rb.lcd_set_drawmode(rb.DRMODE_INVERSEVID)
+                -- Draw selection background
+                rb.lcd_fillrect(0, line * char_height, rb.LCD_WIDTH, char_height)
+                
+                -- Set up viewport for inverse text
+                if rb.LCD_DEPTH == 2 then
+                    -- For 2-bit displays, invert patterns
+                    rb.set_viewport({fg_pattern = 0, bg_pattern = 3, drawmode = 3})
+                else
+                    -- For other displays, use contrasting colors
+                    rb.set_viewport({fg_pattern = 0, bg_pattern = 1, drawmode = 3})
+                end
+                
                 rb.lcd_puts(0, line, item.name)
-                rb.lcd_set_drawmode(rb.DRMODE_SOLID)
+                
+                -- Reset viewport
+                rb.set_viewport()
             else
                 rb.lcd_puts(0, line, item.name)
             end
@@ -250,6 +280,15 @@ function handle_input()
                 current_menu = "albums"
                 current_selection = 1
                 menu_offset = 0
+                
+                -- Debug: show selected collection info
+                local collection = collections[selected_collection]
+                if collection and collection.albums then
+                    local message = "Selected: " .. collection.name .. " (" .. #collection.albums .. " albums)"
+                    rb.splash(1 * rb.HZ, message)
+                else
+                    rb.splash(2 * rb.HZ, "Error: No albums found for " .. selected_collection)
+                end
             end
             
         elseif current_menu == "albums" and _G.current_items then
