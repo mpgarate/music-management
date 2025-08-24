@@ -44,61 +44,32 @@ function file_get_contents(filename)
     return contents
 end
 
--- Simple YAML parser for roon_tags.yaml structure
-function parse_yaml(content)
-    local result = {}
-    local current_collection = nil
-    local in_albums_section = false
-    
-    for line in content:gmatch("[^\r\n]+") do
-        -- Count leading spaces to determine indentation level
-        local indent = line:match("^(%s*)") or ""
-        local indent_level = #indent
-        local trimmed = line:gsub("^%s*", ""):gsub("%s*$", "")
-        
-        if trimmed:match("^collections:") then
-            -- Start of collections section
-        elseif indent_level == 2 and (trimmed:match("^'([^']+)':") or trimmed:match("^\"([^\"]+)\":") or trimmed:match("^([^'\":%s]+):")) then
-            -- Collection name at indent level 2
-            current_collection = trimmed:match("^'([^']+)':") or trimmed:match("^\"([^\"]+)\":") or trimmed:match("^([^'\":%s]+):")
-            if current_collection then
-                result[current_collection] = {albums = {}, name = current_collection}
-                in_albums_section = false
-            end
-        elseif indent_level == 4 and trimmed:match("^albums:") then
-            -- Albums section marker at indent level 4
-            in_albums_section = true
-        elseif indent_level == 4 and trimmed:match("^name: (.+)") then
-            -- Display name for collection at indent level 4
-            if current_collection then
-                local name = trimmed:match("^name: (.+)")
-                -- Remove quotes if present
-                name = name:gsub("^['\"]", ""):gsub("['\"]$", "")
-                result[current_collection].name = name
-            end
-        elseif indent_level == 4 and trimmed:match("^%- (.+)") and in_albums_section then
-            -- Album path at indent level 4, only if we're in albums section
-            if current_collection then
-                local album = trimmed:match("^%- (.+)")
-                table.insert(result[current_collection].albums, album)
-            end
-        end
-    end
-    
-    return result
-end
 
--- Load and parse roon_tags.yaml
+-- Load collections from Lua data file
 function load_collections()
-    local yaml_path = "/roon_tags.yaml"
-    local content = file_get_contents(yaml_path)
+    local lua_path = "/roon_tags.lua"
     
-    if not content then
-        rb.splash(2 * rb.HZ, "Error: Could not read roon_tags.yaml")
+    -- Load the Lua data file
+    local chunk, err = loadfile(lua_path)
+    if not chunk then
+        rb.splash(3 * rb.HZ, "Error: Could not load roon_tags.lua")
         return false
     end
     
-    collections = parse_yaml(content)
+    -- Execute the chunk to get the data
+    local success, data = pcall(chunk)
+    if not success or not data then
+        rb.splash(3 * rb.HZ, "Error: Invalid roon_tags.lua format")
+        return false
+    end
+    
+    -- Extract collections
+    if data.collections then
+        collections = data.collections
+    else
+        rb.splash(3 * rb.HZ, "Error: No collections found in data")
+        return false
+    end
     
     -- Debug: show number of collections loaded
     local count = 0
@@ -115,30 +86,24 @@ function get_audio_files(dir_path)
     local files = {}
     local full_path = "/Music/" .. dir_path
     
-    -- Try to open directory
-    local dir = rb.opendir(full_path)
-    if not dir then
+    -- Use luadir to list directory contents
+    local success, iterator = pcall(luadir.dir, full_path)
+    if not success then
         return files
     end
     
-    -- Read directory contents
-    repeat
-        local entry = rb.readdir(dir)
-        if entry then
-            local filename = entry.name
-            if filename ~= "." and filename ~= ".." then
-                -- Check if file has audio extension
-                for _, ext in ipairs(audio_extensions) do
-                    if filename:lower():match(ext:gsub("%.", "%.") .. "$") then
-                        table.insert(files, full_path .. "/" .. filename)
-                        break
-                    end
+    -- Iterate through directory contents
+    for filename, is_directory in iterator do
+        if not is_directory and filename ~= "." and filename ~= ".." then
+            -- Check if file has audio extension
+            for _, ext in ipairs(audio_extensions) do
+                if filename:lower():match(ext:gsub("%.", "%.") .. "$") then
+                    table.insert(files, full_path .. "/" .. filename)
+                    break
                 end
             end
         end
-    until not entry
-    
-    rb.closedir(dir)
+    end
     
     -- Sort files
     table.sort(files)
