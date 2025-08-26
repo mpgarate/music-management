@@ -2,6 +2,19 @@
 
 ## Claude Instructions
 
+In this dir we have two scripts:
+
+- export_tags.py - exports roon tags to a yaml file of album names
+- convert_collections.py - converts the yaml file to a set of playlists.
+
+Please combine them into a single script 'export_tags_to_playlists.py'. We no longer need the yaml file. Otherwise, ensure the logic remains the same.
+
+The instructions below were used to create the original export_tags.py script.
+
+Note that we have a 'Music' directory available and can test the script to ensure that playlists are created with the correct set of tracks in the right order.
+
+## Previous Instructions
+
 ### Extract Roon Tags
 
 We have many "tags" in Roon, and each tag has a set of albums within it. The same album can appear in multiple tags.
