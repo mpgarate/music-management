@@ -168,6 +168,6 @@ if __name__ == "__main__":
         required=True,
         help="Path to the Roon albums Excel file",
     )
-    
+
     args = parser.parse_args()
     create_playlists(args.roon_tracks, args.roon_albums)
